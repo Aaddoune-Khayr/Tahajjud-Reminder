@@ -1,0 +1,50 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:khayr__tahajjud_reminder/theme.dart';
+import 'package:khayr__tahajjud_reminder/nav.dart';
+import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
+import 'package:khayr__tahajjud_reminder/services/prayer_time_service.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<SettingsService>(
+          create: (_) => SettingsService()..loadSettings(),
+        ),
+        ChangeNotifierProxyProvider<SettingsService, PrayerTimeService>(
+          create: (_) => PrayerTimeService(),
+          update: (_, settingsService, prayerService) {
+            final service = prayerService ?? PrayerTimeService();
+            service.updateCalculationMethod(
+              settingsService.settings.calculationMethod,
+            );
+            return service;
+          },
+        ),
+      ],
+      child: Consumer<SettingsService>(
+        builder: (context, settingsService, child) {
+          return MaterialApp.router(
+            title: 'Khayr - Tahajjud Reminder',
+            debugShowCheckedModeBanner: false,
+            theme: lightTheme,
+            darkTheme: darkTheme,
+            themeMode: settingsService.settings.darkMode
+                ? ThemeMode.dark
+                : ThemeMode.light,
+            routerConfig: AppRouter.router,
+          );
+        },
+      ),
+    );
+  }
+}
