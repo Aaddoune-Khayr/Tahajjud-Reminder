@@ -11,7 +11,7 @@ class SettingsModel {
   SettingsModel({
     this.language = 'fr',
     this.alarmEnabled = true,
-    this.ringtone = 'adhan',
+    this.ringtone = 'adhan_1',
     this.volume = 0.7,
     this.calculationMethod = 'muslim_world_league',
     this.autoLocation = true,
@@ -54,11 +54,18 @@ class SettingsModel {
   factory SettingsModel.fromJson(Map<String, dynamic> json) => SettingsModel(
         language: json['language'] ?? 'fr',
         alarmEnabled: json['alarmEnabled'] ?? true,
-        ringtone: json['ringtone'] ?? 'adhan',
+        ringtone: _normalizeRingtone(json['ringtone']),
         volume: (json['volume'] ?? 0.7).toDouble(),
         calculationMethod: json['calculationMethod'] ?? 'muslim_world_league',
         autoLocation: json['autoLocation'] ?? true,
         darkMode: json['darkMode'] ?? false,
         onboardingCompleted: json['onboardingCompleted'] ?? false,
       );
+
+  static String _normalizeRingtone(dynamic value) {
+    final v = (value ?? '').toString();
+    if (v.isEmpty) return 'adhan_1';
+    if (v == 'adhan') return 'adhan_1'; // legacy value
+    return v;
+  }
 }

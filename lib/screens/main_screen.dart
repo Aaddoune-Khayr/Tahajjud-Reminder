@@ -3,10 +3,6 @@ import 'package:khayr__tahajjud_reminder/components/floating_nav_bar.dart';
 import 'package:khayr__tahajjud_reminder/screens/home_screen.dart';
 import 'package:khayr__tahajjud_reminder/screens/duaa_screen.dart';
 import 'package:khayr__tahajjud_reminder/screens/settings_screen.dart';
-import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
-import 'package:khayr__tahajjud_reminder/nav.dart';
-import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -17,6 +13,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 1;
+  late final PageController _pageController;
 
   final List<Widget> _screens = const [
     SettingsScreen(),
@@ -25,51 +22,52 @@ class _MainScreenState extends State<MainScreen> {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    // Trigger simple onboarding the first time the app is opened
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final settings = context.read<SettingsService>().settings;
-      if (!settings.onboardingCompleted) {
-        context.push(AppRoutes.onboarding);
-      }
-    });
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
 
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  void _onNavTap(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            transitionBuilder: (child, animation) {
-              final offsetAnimation = Tween<Offset>(
-                begin: const Offset(0.05, 0.02),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: offsetAnimation,
-                  child: child,
-                ),
-              );
-            },
-            child: KeyedSubtree(
-              key: ValueKey<int>(_currentIndex),
-              child: _screens[_currentIndex],
-            ),
+          PageView(
+            controller: _pageController,
+            // Disabling user scroll if we only want nav bar control. 
+            // Enable it if swipe navigation is desired.
+            physics: const ClampingScrollPhysics(), 
+            onPageChanged: _onPageChanged,
+            children: _screens,
           ),
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
+            // Ensure FloatingNavBar sits above PageView
             child: FloatingNavBar(
               currentIndex: _currentIndex,
-              onTap: (index) {
-                setState(() {
-                  _currentIndex = index;
-                });
-              },
+              onTap: _onNavTap,
             ),
           ),
         ],

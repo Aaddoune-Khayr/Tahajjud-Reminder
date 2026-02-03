@@ -16,6 +16,11 @@ dependencies:
   intl: 0.20.2
   shared_preferences: ^2.0.0
   flutter_local_notifications: ^19.5.0
+  audioplayers: ^6.5.1
+  timezone: ^0.10.1
+  flutter_timezone: ^5.0.1
+  geolocator: ^14.0.2
+  adhan: ^2.0.0+1
 
 dev_dependencies:
   flutter_test:
@@ -25,6 +30,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/audio/
 
 flutter_launcher_icons:
   android: true

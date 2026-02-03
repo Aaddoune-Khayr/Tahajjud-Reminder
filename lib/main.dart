@@ -4,6 +4,7 @@ import 'package:khayr__tahajjud_reminder/theme.dart';
 import 'package:khayr__tahajjud_reminder/nav.dart';
 import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
 import 'package:khayr__tahajjud_reminder/services/prayer_time_service.dart';
+import 'package:khayr__tahajjud_reminder/services/alarm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,8 +25,20 @@ class MyApp extends StatelessWidget {
           create: (_) => PrayerTimeService(),
           update: (_, settingsService, prayerService) {
             final service = prayerService ?? PrayerTimeService();
-            service.updateCalculationMethod(
-              settingsService.settings.calculationMethod,
+            service.updateSettings(
+              method: settingsService.settings.calculationMethod,
+              autoLocation: settingsService.settings.autoLocation,
+            );
+            return service;
+          },
+        ),
+        ChangeNotifierProxyProvider2<SettingsService, PrayerTimeService, AlarmService>(
+          create: (_) => AlarmService(),
+          update: (_, settingsService, prayerService, alarmService) {
+            final service = alarmService ?? AlarmService();
+            service.syncFromProviders(
+              settingsService: settingsService,
+              prayerTimeService: prayerService,
             );
             return service;
           },

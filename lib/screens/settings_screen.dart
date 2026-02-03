@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:provider/provider.dart';
+import 'package:khayr__tahajjud_reminder/services/alarm_service.dart';
 import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
 import 'package:khayr__tahajjud_reminder/theme.dart';
 
@@ -84,18 +86,23 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   _SettingsTile(
-                    icon: Icons.music_note,
-                    title: isEnglish ? 'Ringtone' : 'Sonnerie',
-                    subtitle: isEnglish
-                        ? 'Adhan – spiritual call to wake for Tahajjud'
-                        : 'Adhan – appel à la prière pour vous réveiller au Tahajjud',
-                    trailing: Text(
-                      'Adhan',
-                      style: context.textStyles.bodyMedium?.copyWith(
-                        color: primary,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    icon: Icons.location_on,
+                    title: isEnglish
+                        ? 'Automatic location'
+                        : 'Localisation automatique',
+                    trailing: Switch(
+                      value: settings.autoLocation,
+                      onChanged: settingsService.toggleAutoLocation,
+                      activeColor: primary,
                     ),
+                  ),
+                  _AdhanSelectorTile(
+                    title: isEnglish ? 'Adhan' : 'Sonnerie',
+                  ),
+                  _AlarmActionsTile(
+                    authorizeLabel: isEnglish ? 'Authorize' : 'Autoriser',
+                    testLabel:
+                        isEnglish ? 'Test notification' : 'Tester la notification',
                   ),
                   _SettingsTile(
                     icon: Icons.volume_up,
@@ -112,51 +119,202 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _SettingsCard(
-                title: isEnglish ? 'Prayer time calculation' : 'Calcul des heures',
-                children: [
-                  _SettingsTile(
-                    icon: Icons.calculate,
-                    title: isEnglish ? 'Calculation method' : 'Méthode de calcul',
-                    subtitle: isEnglish
-                        ? 'MWL – Standard Europe\nISNA – North America\nEgypt – Arab countries\n(earlier Fajr)\nChanging the method\nautomatically adjusts\nthe Tahajjud alarm.'
-                        : 'MWL – Standard Europe\nISNA – Amérique du Nord\nÉgypte – Pays arabes\n(Fajr plus tôt)\nChanger la méthode\najuste automatiquement\nl\'alarme du dernier tiers.',
-                    trailing: DropdownButton<String>(
-                      value: settings.calculationMethod,
-                      underline: const SizedBox(),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'muslim_world_league',
-                          child: Text('MWL'),
-                        ),
-                        DropdownMenuItem(value: 'isna', child: Text('ISNA')),
-                        DropdownMenuItem(
-                          value: 'egypt',
-                          child: Text('Égypte'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          settingsService.updateCalculationMethod(value);
-                        }
-                      },
-                    ),
-                  ),
-                  _SettingsTile(
-                    icon: Icons.location_on,
-                     title: isEnglish ? 'Automatic location' : 'Localisation automatique',
-                    trailing: Switch(
-                      value: settings.autoLocation,
-                      onChanged: settingsService.toggleAutoLocation,
-                      activeColor: primary,
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AdhanSelectorTile extends StatefulWidget {
+  final String title;
+
+  const _AdhanSelectorTile({
+    required this.title,
+  });
+
+  @override
+  State<_AdhanSelectorTile> createState() => _AdhanSelectorTileState();
+}
+
+class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+
+  static const _options = <String, String>{
+    'adhan_1': 'Adhan 1',
+    'adhan_2': 'Adhan 2',
+  };
+
+  static const _assets = <String, String>{
+    'adhan_1': 'audio/adhan_1.mp3',
+    'adhan_2': 'audio/adhan_2.mp3',
+  };
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePreview(String ringtoneKey) async {
+    try {
+      if (_isPlaying) {
+        await _player.stop();
+        if (mounted) setState(() => _isPlaying = false);
+        return;
+      }
+
+      final assetPath = _assets[ringtoneKey];
+      if (assetPath == null) return;
+
+      await _player.stop();
+      await _player.play(AssetSource(assetPath));
+      if (mounted) setState(() => _isPlaying = true);
+
+      _player.onPlayerComplete.first.then((_) {
+        if (mounted) setState(() => _isPlaying = false);
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isPlaying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settingsService = context.watch<SettingsService>();
+    final settings = settingsService.settings;
+    final primary = Theme.of(context).colorScheme.primary;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    final selected = _options.containsKey(settings.ringtone)
+        ? settings.ringtone
+        : 'adhan_1';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.music_note, color: primary, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.title, style: context.textStyles.bodyLarge),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          DropdownButton<String>(
+            value: selected,
+            underline: const SizedBox(),
+            items: _options.entries
+                .map(
+                  (e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                settingsService.updateRingtone(value);
+              }
+            },
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: () => _togglePreview(selected),
+            icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
+            label: Text(
+              _isPlaying
+                  ? (settings.language == 'en' ? 'Stop' : 'Stop')
+                  : (settings.language == 'en' ? 'Listen' : 'Écouter'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlarmActionsTile extends StatelessWidget {
+  final String authorizeLabel;
+  final String testLabel;
+
+  const _AlarmActionsTile({
+    required this.authorizeLabel,
+    required this.testLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final settings = context.watch<SettingsService>().settings;
+    final alarmService = context.read<AlarmService>();
+    final isEnglish = settings.language == 'en';
+
+    Future<void> authorize() async {
+      final granted = await alarmService.requestPermission();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            granted == true
+                ? (isEnglish
+                    ? 'Notifications authorized.'
+                    : 'Notifications autorisées.')
+                : (isEnglish
+                    ? 'Notification permission not granted.'
+                    : 'Autorisation refusée.'),
+          ),
+        ),
+      );
+    }
+
+    Future<void> test() async {
+      await alarmService.showTestNotification(
+        ringtoneKey: settings.ringtone,
+        isEnglish: isEnglish,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isEnglish
+                ? 'Test notification scheduled (3s).'
+                : 'Notification test programmée (3s).',
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.notifications, color: primary, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton(
+                  onPressed: authorize,
+                  child: Text(authorizeLabel),
+                ),
+                ElevatedButton(
+                  onPressed: settings.alarmEnabled ? test : null,
+                  child: Text(testLabel),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

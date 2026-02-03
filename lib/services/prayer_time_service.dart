@@ -1,73 +1,182 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:adhan/adhan.dart';
 
 class PrayerTimeService extends ChangeNotifier {
-  DateTime _fajrTime = DateTime.now().copyWith(hour: 5, minute: 30, second: 0);
-  DateTime _lastThirdTime = DateTime.now().copyWith(hour: 3, minute: 45, second: 0);
+  DateTime _fajrTime = DateTime.now();
+  DateTime _lastThirdTime = DateTime.now();
   Duration _countdown = Duration.zero;
   Timer? _timer;
   String _calculationMethod = 'muslim_world_league';
+  bool _autoLocation = true;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   DateTime get fajrTime => _fajrTime;
   DateTime get lastThirdTime => _lastThirdTime;
   Duration get countdown => _countdown;
   String get calculationMethod => _calculationMethod;
+  bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
 
   PrayerTimeService() {
     _calculateTimes();
     _startCountdown();
   }
 
-  /// Update calculation method (MWL / ISNA / Egypt) and recalculate times.
-  ///
-  /// This simulates different Fajr times depending on the chosen method.
-  void updateCalculationMethod(String method) {
-    _calculationMethod = method;
-    _calculateTimes();
-    notifyListeners();
+  void updateSettings({required String method, required bool autoLocation}) {
+    bool changed = false;
+    if (_calculationMethod != method) {
+      _calculationMethod = method;
+      changed = true;
+    }
+    if (_autoLocation != autoLocation) {
+      _autoLocation = autoLocation;
+      changed = true;
+    }
+    
+    if (changed) {
+      _calculateTimes();
+      notifyListeners();
+    }
   }
 
-  void _calculateTimes() {
-    final now = DateTime.now();
-    // Simuler l'heure du Fajr en fonction de la méthode choisie
-    // MWL – Standard Europe
-    // ISNA – Amérique du Nord (Fajr un peu plus tard)
-    // Égypte – Pays arabes (Fajr plus tôt)
-    if (_calculationMethod == 'isna') {
-      _fajrTime = DateTime(now.year, now.month, now.day, 6, 0);
-    } else if (_calculationMethod == 'egypt') {
-      _fajrTime = DateTime(now.year, now.month, now.day, 5, 0);
-    } else {
-      // muslim_world_league
-      _fajrTime = DateTime(now.year, now.month, now.day, 5, 30);
-    }
-    if (_fajrTime.isBefore(now)) {
-      _fajrTime = _fajrTime.add(const Duration(days: 1));
+  Future<Position?> _determinePosition() async {
+    if (!_autoLocation) return null;
+
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Test if location services are enabled.
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _errorMessage = 'Location services are disabled.';
+      return null;
     }
 
-    // Calculer l'heure du coucher du soleil (approximation : 18h30)
-    final sunset = DateTime(now.year, now.month, now.day, 18, 30);
-    
-    // Calculer le dernier tiers de la nuit
-    // Nuit = du coucher du soleil au Fajr
-    final nextFajr = _fajrTime;
-    final nightDuration = nextFajr.difference(sunset);
-    final lastThirdStart = sunset.add(Duration(
-      milliseconds: (nightDuration.inMilliseconds * 2 / 3).round(),
-    ));
-
-    _lastThirdTime = lastThirdStart;
-    if (_lastThirdTime.isBefore(now)) {
-      // Calculer pour le jour suivant
-      final tomorrowSunset = sunset.add(const Duration(days: 1));
-      final tomorrowFajr = _fajrTime.add(const Duration(days: 1));
-      final tomorrowNightDuration = tomorrowFajr.difference(tomorrowSunset);
-      _lastThirdTime = tomorrowSunset.add(Duration(
-        milliseconds: (tomorrowNightDuration.inMilliseconds * 2 / 3).round(),
-      ));
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        _errorMessage = 'Location permissions are denied';
+        return null;
+      }
     }
 
+    if (permission == LocationPermission.deniedForever) {
+      _errorMessage =
+          'Location permissions are permanently denied, we cannot request permissions.';
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  CalculationMethod _getAdhanMethod(String method) {
+    switch (method) {
+      case 'isna':
+        return CalculationMethod.north_america;
+      case 'egypt':
+        return CalculationMethod.egyptian;
+      case 'muslim_world_league':
+      default:
+        return CalculationMethod.muslim_world_league;
+    }
+  }
+
+  Future<void> _calculateTimes() async {
+    _isLoading = true;
     notifyListeners();
+
+    try {
+      final position = await _determinePosition();
+      
+      // Default fallback (Paris) if location fails
+      final coords = position != null
+          ? Coordinates(position.latitude, position.longitude)
+          : Coordinates(48.8566, 2.3522); 
+
+      debugPrint('📍 Location used: ${coords.latitude}, ${coords.longitude} (Auto: $_autoLocation)');
+
+      final params = _getAdhanMethod(_calculationMethod).getParameters();
+      params.madhab = Madhab.shafi;
+
+      final now = DateTime.now();
+      final todayDate = DateComponents(now.year, now.month, now.day);
+      
+      // Calculate Prayer Times for Today
+      final prayerTimesToday = PrayerTimes(coords, todayDate, params);
+      
+      debugPrint('🕌 Fajr Today: ${prayerTimesToday.fajr} | Maghrib Today: ${prayerTimesToday.maghrib}');
+      
+      // Determine Maghrib (Sunset start of night) and Fajr (End of night)
+      DateTime maghribToday = prayerTimesToday.maghrib;
+      DateTime fajrToday = prayerTimesToday.fajr;
+
+      // Ensure Fajr is for the *next* ending transition relative to the night starting at Maghrib
+      // Case 1: Before Maghrib today. The "upcoming night" is Maghrib Today -> Fajr Tomorrow.
+      // Case 2: After Maghrib today (during the night). The current night ends at Fajr Tomorrow.
+      // Typically: Night = Maghrib(Day N) to Fajr(Day N+1)
+      
+      // But we need "Next Last Third".
+      
+      // Let's look at a simpler cycle:
+      // We need the next occurrence of the "Last Third".
+      // Is it tonight? Or tomorrow night?
+      
+      // Let's calculate for "Tonight's night" (Maghrib Today -> Fajr Tomorrow)
+      // and "Yesterday's night" (Maghrib Yesterday -> Fajr Today) - relevant if we are currently in the early morning (before Fajr).
+      
+      // Simplification: Calculate "Next Last Third" dynamically.
+      // 1. Calculate potential Last Third for "Yesterday->Today", "Today->Tomorrow".
+      // 2. Pick the first one that is in the future.
+
+      DateTime? validLastThird;
+      
+      // Check Night 1: Yesterday Maghrib -> Today Fajr
+      // (Relevant if we are at 2 AM)
+      final yesterday = now.subtract(const Duration(days: 1));
+      final prayerTimesYesterday = PrayerTimes(coords, DateComponents(yesterday.year, yesterday.month, yesterday.day), params);
+      
+      final maghribYest = prayerTimesYesterday.maghrib;
+      final fajrTodayCalc = prayerTimesToday.fajr; // Fajr of "Today" is end of yesterday's night
+      
+      final nightDurationYest = fajrTodayCalc.difference(maghribYest);
+      final lastThirdStartYest = maghribYest.add(Duration(milliseconds: (nightDurationYest.inMilliseconds * 2 / 3).round()));
+      
+      if (lastThirdStartYest.isAfter(now)) {
+        validLastThird = lastThirdStartYest;
+        _fajrTime = fajrTodayCalc;
+      }
+      
+      // Check Night 2: Today Maghrib -> Tomorrow Fajr
+      if (validLastThird == null) {
+         final tomorrow = now.add(const Duration(days: 1));
+         final prayerTimesTomorrow = PrayerTimes(coords, DateComponents(tomorrow.year, tomorrow.month, tomorrow.day), params);
+         
+         final maghribTodayCalc = prayerTimesToday.maghrib;
+         final fajrTomorrowCalc = prayerTimesTomorrow.fajr;
+         
+         final nightDurationToday = fajrTomorrowCalc.difference(maghribTodayCalc);
+         final lastThirdStartToday = maghribTodayCalc.add(Duration(milliseconds: (nightDurationToday.inMilliseconds * 2 / 3).round()));
+         
+         validLastThird = lastThirdStartToday;
+         _fajrTime = fajrTomorrowCalc;
+      }
+
+      _lastThirdTime = validLastThird!;
+      
+    } catch (e) {
+      _errorMessage = e.toString();
+      debugPrint("Error calculating prayer times: $e");
+      // Fallback safe defaults just in case
+      _lastThirdTime = DateTime.now().add(const Duration(hours: 1));
+      _fajrTime = DateTime.now().add(const Duration(hours: 2));
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void _startCountdown() {
@@ -75,9 +184,12 @@ class PrayerTimeService extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       final now = DateTime.now();
       if (_lastThirdTime.isBefore(now)) {
+        // If the target time passed, recalculate for the next cycle
         _calculateTimes();
       }
       _countdown = _lastThirdTime.difference(now);
+      // Prevent negative countdowns
+      if (_countdown.isNegative) _countdown = Duration.zero;
       notifyListeners();
     });
   }
