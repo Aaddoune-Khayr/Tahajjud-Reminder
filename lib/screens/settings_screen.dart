@@ -117,6 +117,9 @@ class SettingsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  _DaySelectorTile(
+                    title: isEnglish ? 'Active days' : 'Jours actifs',
+                  ),
                 ],
               ),
             ],
@@ -275,9 +278,11 @@ class _AlarmActionsTile extends StatelessWidget {
     }
 
     Future<void> test() async {
+      final settingsService = context.read<SettingsService>();
       await alarmService.showTestNotification(
         ringtoneKey: settings.ringtone,
         isEnglish: isEnglish,
+        settingsService: settingsService,
       );
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -410,6 +415,87 @@ class _SettingsTile extends StatelessWidget {
             ),
           ),
           if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+class _DaySelectorTile extends StatelessWidget {
+  final String title;
+
+  const _DaySelectorTile({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final settingsService = context.watch<SettingsService>();
+    final settings = settingsService.settings;
+    final isEnglish = settings.language == 'en';
+    final primary = Theme.of(context).colorScheme.primary;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    // Day labels: 1=Monday, 7=Sunday
+    final dayLabels = isEnglish
+        ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+        : ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_today, color: primary, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: context.textStyles.bodyLarge,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(7, (index) {
+              final dayNumber = index + 1; // 1=Monday, 7=Sunday
+              final isActive = settings.activeDays.contains(dayNumber);
+
+              return GestureDetector(
+                onTap: () {
+                  final newDays = List<int>.from(settings.activeDays);
+                  if (isActive) {
+                    newDays.remove(dayNumber);
+                  } else {
+                    newDays.add(dayNumber);
+                  }
+                  newDays.sort();
+                  settingsService.updateActiveDays(newDays);
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? primary
+                        : onSurface.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      dayLabels[index],
+                      style: context.textStyles.bodyMedium?.copyWith(
+                        color: isActive
+                            ? Colors.white
+                            : onSurface.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ],
       ),
     );

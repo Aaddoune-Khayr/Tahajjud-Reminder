@@ -1,4 +1,4 @@
-package com.example.khayr__tahajjud_reminder
+package com.aaddoune.khayr
 
 import io.flutter.embedding.android.FlutterActivity
 

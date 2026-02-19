@@ -7,6 +7,7 @@ class SettingsModel {
   final bool autoLocation;
   final bool darkMode;
   final bool onboardingCompleted;
+  final List<int> activeDays; // 1=Monday, 2=Tuesday, ..., 7=Sunday
 
   SettingsModel({
     this.language = 'fr',
@@ -17,6 +18,7 @@ class SettingsModel {
     this.autoLocation = true,
     this.darkMode = false,
     this.onboardingCompleted = false,
+    this.activeDays = const [1, 2, 3, 4, 5, 6, 7], // All days by default
   });
 
   SettingsModel copyWith({
@@ -28,6 +30,7 @@ class SettingsModel {
     bool? autoLocation,
     bool? darkMode,
     bool? onboardingCompleted,
+    List<int>? activeDays,
   }) =>
       SettingsModel(
         language: language ?? this.language,
@@ -38,6 +41,7 @@ class SettingsModel {
         autoLocation: autoLocation ?? this.autoLocation,
         darkMode: darkMode ?? this.darkMode,
         onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+        activeDays: activeDays ?? this.activeDays,
       );
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +53,7 @@ class SettingsModel {
         'autoLocation': autoLocation,
         'darkMode': darkMode,
         'onboardingCompleted': onboardingCompleted,
+        'activeDays': activeDays,
       };
 
   factory SettingsModel.fromJson(Map<String, dynamic> json) => SettingsModel(
@@ -60,6 +65,8 @@ class SettingsModel {
         autoLocation: json['autoLocation'] ?? true,
         darkMode: json['darkMode'] ?? false,
         onboardingCompleted: json['onboardingCompleted'] ?? false,
+        activeDays: (json['activeDays'] as List<dynamic>?)?.map((e) => e as int).toList() ?? 
+                    const [1, 2, 3, 4, 5, 6, 7],
       );
 
   static String _normalizeRingtone(dynamic value) {

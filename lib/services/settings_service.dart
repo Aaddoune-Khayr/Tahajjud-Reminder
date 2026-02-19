@@ -61,6 +61,10 @@ class SettingsService extends ChangeNotifier {
     await updateSettings(_settings.copyWith(darkMode: enabled));
   }
 
+  Future<void> updateActiveDays(List<int> days) async {
+    await updateSettings(_settings.copyWith(activeDays: days));
+  }
+
    Future<void> completeOnboarding() async {
      await updateSettings(_settings.copyWith(onboardingCompleted: true));
    }

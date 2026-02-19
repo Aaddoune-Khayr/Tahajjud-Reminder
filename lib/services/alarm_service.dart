@@ -83,10 +83,12 @@ class AlarmService extends ChangeNotifier {
       return;
     }
 
+
     await scheduleAlarm(
       at: next,
       ringtoneKey: settings.ringtone,
       isEnglish: settings.language == 'en',
+      settingsService: settingsService,
     );
   }
 
@@ -94,9 +96,19 @@ class AlarmService extends ChangeNotifier {
     required DateTime at,
     required String ringtoneKey,
     required bool isEnglish,
+    required SettingsService settingsService,
     bool isTest = false,
   }) async {
     await init();
+
+    // Check if today is an active day (1=Monday, 7=Sunday)
+    final today = DateTime.now().weekday; // DateTime.weekday: 1=Monday, 7=Sunday
+    final activeDays = settingsService.settings.activeDays;
+    
+    if (!activeDays.contains(today)) {
+      debugPrint('⏭️ Alarm not scheduled: Today ($today) is not in active days $activeDays');
+      return;
+    }
 
     final scheduled = at.isAfter(DateTime.now())
         ? at
@@ -147,6 +159,7 @@ class AlarmService extends ChangeNotifier {
   Future<void> showTestNotification({
     required String ringtoneKey,
     required bool isEnglish,
+    required SettingsService settingsService,
   }) async {
     await init();
     final when = DateTime.now().add(const Duration(seconds: 3));
@@ -155,6 +168,7 @@ class AlarmService extends ChangeNotifier {
       ringtoneKey: ringtoneKey,
       isEnglish: isEnglish,
       isTest: true,
+      settingsService: settingsService,
     );
   }
 
