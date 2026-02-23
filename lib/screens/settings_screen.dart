@@ -161,7 +161,7 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
     super.dispose();
   }
 
-  Future<void> _togglePreview(String ringtoneKey) async {
+  Future<void> _togglePreview(String ringtoneKey, double volume) async {
     try {
       if (_isPlaying) {
         await _player.stop();
@@ -173,6 +173,7 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
       if (assetPath == null) return;
 
       await _player.stop();
+      await _player.setVolume(volume);
       await _player.play(AssetSource(assetPath));
       if (mounted) setState(() => _isPlaying = true);
 
@@ -195,6 +196,11 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
         ? settings.ringtone
         : 'adhan_1';
 
+    // Update player volume in real-time if it's already playing
+    if (_isPlaying) {
+      _player.setVolume(settings.volume);
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -204,37 +210,62 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(widget.title, style: context.textStyles.bodyLarge),
+                Text(
+                  widget.title, 
+                  style: context.textStyles.bodyLarge,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          DropdownButton<String>(
-            value: selected,
-            underline: const SizedBox(),
-            items: _options.entries
-                .map(
-                  (e) => DropdownMenuItem(
-                    value: e.key,
-                    child: Text(e.value),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value != null) {
-                settingsService.updateRingtone(value);
-              }
-            },
-          ),
           const SizedBox(width: 8),
-          TextButton.icon(
-            onPressed: () => _togglePreview(selected),
-            icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow),
-            label: Text(
-              _isPlaying
-                  ? (settings.language == 'en' ? 'Stop' : 'Stop')
-                  : (settings.language == 'en' ? 'Listen' : 'Écouter'),
+          Flexible(
+            flex: 0,
+            child: DropdownButton<String>(
+              value: selected,
+              underline: const SizedBox(),
+              isDense: true,
+              style: context.textStyles.bodyMedium?.copyWith(
+                color: onSurface,
+                fontSize: 13,
+              ),
+              items: _options.entries
+                  .map(
+                    (e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  settingsService.updateRingtone(value);
+                }
+              },
+            ),
+          ),
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: () => _togglePreview(selected, settings.volume),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_isPlaying ? Icons.stop : Icons.play_arrow, size: 20),
+                const SizedBox(width: 2),
+                Text(
+                  _isPlaying
+                      ? (settings.language == 'en' ? 'Stop' : 'Stop')
+                      : (settings.language == 'en' ? 'Listen' : 'Écouter'),
+                  style: context.textStyles.labelMedium?.copyWith(color: primary),
+                ),
+              ],
             ),
           ),
         ],
@@ -298,26 +329,50 @@ class _AlarmActionsTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+      child: Column(
         children: [
-          Icon(Icons.notifications, color: primary, size: 24),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: authorize,
-                  child: Text(authorizeLabel),
+          Row(
+            children: [
+              Icon(Icons.notifications, color: primary, size: 24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  isEnglish ? 'Notification settings' : 'Réglages notifications',
+                  style: context.textStyles.bodyLarge,
                 ),
-                ElevatedButton(
-                  onPressed: settings.alarmEnabled ? test : null,
-                  child: Text(testLabel),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const SizedBox(width: 40), // indent icons
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed: authorize,
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: Text(authorizeLabel),
+                    ),
+                    ElevatedButton(
+                      onPressed: settings.alarmEnabled ? test : null,
+                      style: ElevatedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        backgroundColor: primary.withValues(alpha: 0.1),
+                        foregroundColor: primary,
+                        elevation: 0,
+                      ),
+                      child: Text(testLabel),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),

@@ -23,8 +23,15 @@ class FloatingNavBar extends StatelessWidget {
     final surface = Theme.of(context).colorScheme.surface;
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+
     return Padding(
-      padding: AppSpacing.paddingMd,
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md + bottomPadding,
+      ),
       child: Container(
         height: 72,
         decoration: BoxDecoration(

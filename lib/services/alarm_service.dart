@@ -162,13 +162,40 @@ class AlarmService extends ChangeNotifier {
     required SettingsService settingsService,
   }) async {
     await init();
-    final when = DateTime.now().add(const Duration(seconds: 3));
-    await scheduleAlarm(
-      at: when,
-      ringtoneKey: ringtoneKey,
-      isEnglish: isEnglish,
-      isTest: true,
-      settingsService: settingsService,
+    
+    // Explicitly request/check permission before test for better UX
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.requestNotificationsPermission();
+
+    // Show a "pseudo-immediate" notification for the test
+    // Use 'show' instead of 'zonedSchedule' for the test to ensure it works regardless of time issues
+    
+    final androidDetails = AndroidNotificationDetails(
+      'test_channel_high',
+      'Alertes de test',
+      channelDescription: 'Canal pour les tests de notification',
+      importance: Importance.max,
+      priority: Priority.high,
+      fullScreenIntent: true,
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound(ringtoneKey),
+    );
+
+    final details = NotificationDetails(android: androidDetails);
+    
+    final title = isEnglish ? 'Test Khayr' : 'Test Khayr';
+    final body = isEnglish 
+        ? 'Ceci est une notification de test.' 
+        : 'Ceci est une notification de test.';
+
+    // Use show directly for the test
+    await _plugin.show(
+      999, 
+      title, 
+      body, 
+      details,
+      payload: 'test',
     );
   }
 

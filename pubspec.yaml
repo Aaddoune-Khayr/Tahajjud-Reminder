@@ -38,12 +38,13 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/icons/logo_tahajjud.png
+  image_path: assets/Icons/logo_tahajjud.png
   remove_alpha_ios: true
 
 flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/icons/logo_tahajjud.png
+  color: "#0D0C1D"
+  image: assets/Icons/logo_tahajjud_NoBG.png
   android_12:
-    image: assets/icons/logo_tahajjud.png
-    color: "#FFFFFF"
+    image: assets/Icons/logo_tahajjud_NoBG.png
+    color: "#0D0C1D"
+    icon_background_color: "#0D0C1D"
