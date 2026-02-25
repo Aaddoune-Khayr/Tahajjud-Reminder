@@ -1,7 +1,7 @@
 name: khayr__tahajjud_reminder
 description: "Khayr est une application mobile au design moderne et spirituel, conçue pour vous rappeler l'heure de Tahajjud avec des rappels inspirants, des Du'a authentiques et une interface apaisante."
 publish_to: "none"
-version: 1.0.0
+version: 1.0.1+4
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -22,6 +22,7 @@ dependencies:
   geolocator: ^14.0.2
   adhan: ^2.0.0+1
   change_app_package_name: ^1.5.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

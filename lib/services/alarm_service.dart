@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -23,20 +26,28 @@ class AlarmService extends ChangeNotifier {
 
   bool _initialized = false;
   DateTime? _lastScheduledAt;
-  bool _permissionRequestedOnce = false;
 
   Future<void> init() async {
     if (_initialized) return;
 
+    // 1. Initialize timezones database
     tz.initializeTimeZones();
+
+    // 2. Get local timezone name - FlutterTimezone 5.0.1 returns TimezoneInfo
     try {
-      final tzInfo = await FlutterTimezone.getLocalTimezone();
-      final tzName = tzInfo.identifier;
+      final TimezoneInfo tzInfo = await FlutterTimezone.getLocalTimezone();
+      final String tzName = tzInfo.identifier;
+      debugPrint('🕐 Setting timezone to: $tzName');
       tz.setLocalLocation(tz.getLocation(tzName));
-    } catch (_) {
-      // If timezone lookup fails, tz.local will be used.
+    } catch (e) {
+      debugPrint('⚠️ Could not set timezone: $e — using Europe/Paris fallback');
+      try {
+        tz.setLocalLocation(tz.getLocation('Europe/Paris'));
+        debugPrint('🕐 Using Europe/Paris as fallback timezone');
+      } catch (_) {}
     }
 
+    // 3. Initialize notifications plugin
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
 
@@ -49,20 +60,66 @@ class AlarmService extends ChangeNotifier {
       },
     );
 
+    // 4. Create the notification channel for alarm (Android 8+)
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _channelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+    // Test channel
+    await androidImpl?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'test_channel_high',
+        'Alertes de test',
+        description: 'Canal pour les tests de notification',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+
     _initialized = true;
+    debugPrint('✅ AlarmService initialized');
   }
 
   Future<bool?> requestPermission() async {
     await init();
-    _permissionRequestedOnce = true;
+    
+    // Normal Notification Permission
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    return androidImpl?.requestNotificationsPermission();
+    final granted = await androidImpl?.requestNotificationsPermission();
+    
+    // Exact Alarm Permission (Android 13+)
+    if (Platform.isAndroid) {
+      final status = await Permission.scheduleExactAlarm.status;
+      if (!status.isGranted) {
+        debugPrint('⏰ Exact alarm permission is missing. Using Platform Channel redirect.');
+        try {
+          // Standard intent for Exact Alarms settings
+          const platform = MethodChannel('com.khayr.app/settings');
+          await platform.invokeMethod('openExactAlarmSettings');
+        } catch (e) {
+          debugPrint('❌ Fallback to permission_handler: $e');
+          await Permission.scheduleExactAlarm.request();
+        }
+      }
+    }
+
+    debugPrint('🔔 Notification permission: $granted');
+    return granted;
   }
 
   Future<void> syncFromProviders({
     required SettingsService settingsService,
-    required PrayerTimeService prayerTimeService,
+    required PrayerTimeService? prayerTimeService,
   }) async {
     await init();
 
@@ -72,17 +129,15 @@ class AlarmService extends ChangeNotifier {
       return;
     }
 
-    // Don't spam permission prompts: only schedule if permission was already
-    // requested at least once (via the "Autoriser" button or OS prompt).
-    if (!_permissionRequestedOnce) return;
+    if (prayerTimeService == null || prayerTimeService.isLoading) return;
 
     final next = prayerTimeService.lastThirdTime;
-    // Avoid rescheduling too often.
+
+    // Avoid rescheduling too often (within 5 seconds of same time).
     if (_lastScheduledAt != null &&
         (_lastScheduledAt!.difference(next).inSeconds).abs() < 5) {
       return;
     }
-
 
     await scheduleAlarm(
       at: next,
@@ -101,19 +156,24 @@ class AlarmService extends ChangeNotifier {
   }) async {
     await init();
 
-    // Check if today is an active day (1=Monday, 7=Sunday)
-    final today = DateTime.now().weekday; // DateTime.weekday: 1=Monday, 7=Sunday
+    // Check if today is an active day
+    final today = DateTime.now().weekday;
     final activeDays = settingsService.settings.activeDays;
-    
-    if (!activeDays.contains(today)) {
-      debugPrint('⏭️ Alarm not scheduled: Today ($today) is not in active days $activeDays');
+
+    if (!isTest && !activeDays.contains(today)) {
+      debugPrint('⏭️ Alarm not scheduled: day $today not in $activeDays');
       return;
     }
 
-    final scheduled = at.isAfter(DateTime.now())
-        ? at
-        : at.add(const Duration(days: 1));
+    // If the time is in the past, schedule for tomorrow
+    final now = DateTime.now();
+    final scheduled = at.isAfter(now) ? at : at.add(const Duration(days: 1));
     _lastScheduledAt = scheduled;
+
+    debugPrint('⏰ Scheduling alarm for: $scheduled (tz.local = ${tz.local.name})');
+
+    final tzScheduled = tz.TZDateTime.from(scheduled, tz.local);
+    debugPrint('⏰ TZDateTime: $tzScheduled');
 
     final androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -121,10 +181,10 @@ class AlarmService extends ChangeNotifier {
       channelDescription: _channelDescription,
       importance: Importance.max,
       priority: Priority.high,
+      fullScreenIntent: true,
       playSound: true,
-      // For custom sound, you must add an MP3 to:
-      // android/app/src/main/res/raw/<ringtoneKey>.mp3
       sound: RawResourceAndroidNotificationSound(ringtoneKey),
+      enableVibration: true,
       actions: [
         AndroidNotificationAction(
           actionStop,
@@ -136,41 +196,43 @@ class AlarmService extends ChangeNotifier {
 
     final details = NotificationDetails(android: androidDetails);
 
-    final title = isEnglish ? 'Tahajjud' : 'Tahajjud';
+    final title = 'Tahajjud';
     final body = isTest
         ? (isEnglish
-            ? 'Test notification — tap Stop to silence.'
-            : 'Notification test — appuyez sur Arrêter pour couper.')
+            ? 'Test — tap Stop to silence.'
+            : 'Test — appuyez sur Arrêter pour couper.')
         : (isEnglish
-            ? 'Time to wake up for Tahajjud.'
-            : 'Il est temps de se réveiller pour Tahajjud.');
+            ? 'Time to wake up for Tahajjud 🌙'
+            : 'Il est temps de se réveiller pour Tahajjud 🌙');
 
     await _plugin.zonedSchedule(
       _notificationId,
       title,
       body,
-      tz.TZDateTime.from(scheduled, tz.local),
+      tzScheduled,
       details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: isTest ? null : DateTimeComponents.time,
     );
+
+    debugPrint('✅ Alarm scheduled at $tzScheduled');
   }
 
+  /// Affiche une notification de test IMMÉDIATEMENT.
   Future<void> showTestNotification({
     required String ringtoneKey,
     required bool isEnglish,
     required SettingsService settingsService,
   }) async {
     await init();
-    
-    // Explicitly request/check permission before test for better UX
+
+    // Request permission if needed
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.requestNotificationsPermission();
 
-    // Show a "pseudo-immediate" notification for the test
-    // Use 'show' instead of 'zonedSchedule' for the test to ensure it works regardless of time issues
-    
+    debugPrint('🔔 Showing test notification now...');
+
     final androidDetails = AndroidNotificationDetails(
       'test_channel_high',
       'Alertes de test',
@@ -179,30 +241,25 @@ class AlarmService extends ChangeNotifier {
       priority: Priority.high,
       fullScreenIntent: true,
       playSound: true,
+      enableVibration: true,
       sound: RawResourceAndroidNotificationSound(ringtoneKey),
     );
 
     final details = NotificationDetails(android: androidDetails);
-    
-    final title = isEnglish ? 'Test Khayr' : 'Test Khayr';
-    final body = isEnglish 
-        ? 'Ceci est une notification de test.' 
-        : 'Ceci est une notification de test.';
 
-    // Use show directly for the test
-    await _plugin.show(
-      999, 
-      title, 
-      body, 
-      details,
-      payload: 'test',
-    );
+    final title = 'Test Khayr 🌙';
+    final body = isEnglish
+        ? 'Test notif — alarm works correctly!'
+        : 'Notif test — l\'alarme fonctionne correctement !';
+
+    await _plugin.show(999, title, body, details, payload: 'test');
+    debugPrint('✅ Test notification shown');
   }
 
   Future<void> cancelAlarm() async {
     await init();
     _lastScheduledAt = null;
     await _plugin.cancel(_notificationId);
+    debugPrint('🗑️ Alarm cancelled');
   }
 }
-

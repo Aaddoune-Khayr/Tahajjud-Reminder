@@ -235,7 +235,10 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
                   .map(
                     (e) => DropdownMenuItem(
                       value: e.key,
-                      child: Text(e.value),
+                      child: Text(
+                        e.value,
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   )
                   .toList(),
@@ -293,18 +296,18 @@ class _AlarmActionsTile extends StatelessWidget {
     Future<void> authorize() async {
       final granted = await alarmService.requestPermission();
       if (!context.mounted) return;
+      
+      String message;
+      if (granted == true) {
+        message = isEnglish ? 'Notifications authorized.' : 'Notifications autorisées.';
+      } else {
+        message = isEnglish 
+            ? 'Please also enable "Exact Alarms" in settings.' 
+            : 'Veuillez aussi activer "Alarmes et rappels" dans les réglages.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            granted == true
-                ? (isEnglish
-                    ? 'Notifications authorized.'
-                    : 'Notifications autorisées.')
-                : (isEnglish
-                    ? 'Notification permission not granted.'
-                    : 'Autorisation refusée.'),
-          ),
-        ),
+        SnackBar(content: Text(message)),
       );
     }
 
