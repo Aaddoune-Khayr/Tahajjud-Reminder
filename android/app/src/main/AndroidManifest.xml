@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Réveiller l'écran pour les alarmes -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Autoriser l'affichage d'activités en plein écran pour les alarmes sonnantes (Android 14) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Localisation -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

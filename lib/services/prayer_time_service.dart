@@ -143,7 +143,11 @@ class PrayerTimeService extends ChangeNotifier {
           };
         } else {
           final coords = Coordinates(lat, lon);
-          final params = CalculationMethod.muslim_world_league.getParameters();
+          // Define UOIF (12 degrees) as default for France, which prevents large offsets
+          // when Mawaqit API is unavailable or doesn't match the specific selected mosque.
+          final params = CalculationMethod.other.getParameters();
+          params.fajrAngle = 12.0;
+          params.ishaAngle = 12.0;
           params.madhab = Madhab.shafi;
           final adhan = PrayerTimes(coords, DateComponents.from(date), params);
           return {

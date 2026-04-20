@@ -60,31 +60,6 @@ class AlarmService extends ChangeNotifier {
       },
     );
 
-    // 4. Create the notification channel for alarm (Android 8+)
-    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    await androidImpl?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        _channelId,
-        _channelName,
-        description: _channelDescription,
-        importance: Importance.max,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-    // Test channel
-    await androidImpl?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'test_channel_high',
-        'Alertes de test',
-        description: 'Canal pour les tests de notification',
-        importance: Importance.max,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-
     _initialized = true;
     debugPrint('✅ AlarmService initialized');
   }
@@ -165,9 +140,12 @@ class AlarmService extends ChangeNotifier {
       return;
     }
 
-    // If the time is in the past, schedule for tomorrow
+    // If the time is in the past (already happened recently), schedule for tomorrow exactly by adding 1 day locally
     final now = DateTime.now();
-    final scheduled = at.isAfter(now) ? at : at.add(const Duration(days: 1));
+    DateTime scheduled = at;
+    if (at.isBefore(now)) {
+      scheduled = DateTime(at.year, at.month, at.day + 1, at.hour, at.minute);
+    }
     _lastScheduledAt = scheduled;
 
     debugPrint('⏰ Scheduling alarm for: $scheduled (tz.local = ${tz.local.name})');
@@ -175,8 +153,25 @@ class AlarmService extends ChangeNotifier {
     final tzScheduled = tz.TZDateTime.from(scheduled, tz.local);
     debugPrint('⏰ TZDateTime: $tzScheduled');
 
+    final String currentChannelId = 'tahajjud_alarm_${ringtoneKey}_v4';
+    
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.createNotificationChannel(
+      AndroidNotificationChannel(
+        currentChannelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(ringtoneKey),
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
     final androidDetails = AndroidNotificationDetails(
-      _channelId,
+      currentChannelId,
       _channelName,
       channelDescription: _channelDescription,
       importance: Importance.max,
@@ -185,6 +180,8 @@ class AlarmService extends ChangeNotifier {
       playSound: true,
       sound: RawResourceAndroidNotificationSound(ringtoneKey),
       enableVibration: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      category: AndroidNotificationCategory.alarm,
       actions: [
         AndroidNotificationAction(
           actionStop,
@@ -211,7 +208,7 @@ class AlarmService extends ChangeNotifier {
       body,
       tzScheduled,
       details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
       matchDateTimeComponents: isTest ? null : DateTimeComponents.time,
     );
 
@@ -233,8 +230,23 @@ class AlarmService extends ChangeNotifier {
 
     debugPrint('🔔 Showing test notification now...');
 
+    final String currentChannelId = 'test_channel_${ringtoneKey}_v4';
+
+    await androidImpl?.createNotificationChannel(
+      AndroidNotificationChannel(
+        currentChannelId,
+        'Alertes de test',
+        description: 'Canal pour les tests de notification',
+        importance: Importance.max,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(ringtoneKey),
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      ),
+    );
+
     final androidDetails = AndroidNotificationDetails(
-      'test_channel_high',
+      currentChannelId,
       'Alertes de test',
       channelDescription: 'Canal pour les tests de notification',
       importance: Importance.max,
@@ -243,6 +255,8 @@ class AlarmService extends ChangeNotifier {
       playSound: true,
       enableVibration: true,
       sound: RawResourceAndroidNotificationSound(ringtoneKey),
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      category: AndroidNotificationCategory.alarm,
     );
 
     final details = NotificationDetails(android: androidDetails);
