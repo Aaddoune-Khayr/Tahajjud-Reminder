@@ -1,4 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:khayr__tahajjud_reminder/services/alarm_service.dart';
+import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
 import 'package:khayr__tahajjud_reminder/components/floating_nav_bar.dart';
 import 'package:khayr__tahajjud_reminder/screens/home_screen.dart';
 import 'package:khayr__tahajjud_reminder/screens/duaa_screen.dart';
@@ -25,6 +30,46 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPermissionsAndShowPopup();
+    });
+  }
+
+  Future<void> _checkPermissionsAndShowPopup() async {
+    bool needsPermissions = false;
+
+    if (await Permission.notification.isDenied || await Permission.notification.isPermanentlyDenied) {
+      needsPermissions = true;
+    }
+    if (Platform.isAndroid) {
+      final exactAlarmStatus = await Permission.scheduleExactAlarm.status;
+      if (!exactAlarmStatus.isGranted) {
+        needsPermissions = true;
+      }
+    }
+
+    if (needsPermissions && mounted) {
+      final isEnglish = context.read<SettingsService>().settings.language == 'en';
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text(isEnglish ? 'Permissions Needed' : 'Autorisations requises'),
+          content: Text(isEnglish
+              ? 'To wake you up exactly on time, Khayr needs permission to:\n\n1. Send notifications\n2. Set exact alarms\n\nPlease tap Allow to proceed.'
+              : 'Pour que l\'alarme fonctionne correctement, Khayr a besoin des autorisations suivantes :\n\n1. Notifications\n2. Alarmes exactes\n\nMerci de les accepter.'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await context.read<AlarmService>().requestPermission();
+              },
+              child: Text(isEnglish ? 'Allow' : 'Autoriser'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override

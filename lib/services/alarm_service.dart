@@ -1,9 +1,6 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -12,7 +9,6 @@ import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
 
 class AlarmService extends ChangeNotifier {
   static const int _notificationId = 1001;
-  static const String _channelId = 'tahajjud_alarm';
   static const String _channelName = 'Tahajjud alarm';
   static const String _channelDescription =
       'Tahajjud reminder notification with Adhan sound.';
@@ -25,6 +21,7 @@ class AlarmService extends ChangeNotifier {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  bool _startupPermissionsRequested = false;
   DateTime? _lastScheduledAt;
 
   Future<void> init() async {
@@ -61,40 +58,13 @@ class AlarmService extends ChangeNotifier {
     );
 
     _initialized = true;
+    await _requestStartupPermissions();
     debugPrint('✅ AlarmService initialized');
-  }
-
-  Future<bool?> requestPermission() async {
-    await init();
-    
-    // Normal Notification Permission
-    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    final granted = await androidImpl?.requestNotificationsPermission();
-    
-    // Exact Alarm Permission (Android 13+)
-    if (Platform.isAndroid) {
-      final status = await Permission.scheduleExactAlarm.status;
-      if (!status.isGranted) {
-        debugPrint('⏰ Exact alarm permission is missing. Using Platform Channel redirect.');
-        try {
-          // Standard intent for Exact Alarms settings
-          const platform = MethodChannel('com.khayr.app/settings');
-          await platform.invokeMethod('openExactAlarmSettings');
-        } catch (e) {
-          debugPrint('❌ Fallback to permission_handler: $e');
-          await Permission.scheduleExactAlarm.request();
-        }
-      }
-    }
-
-    debugPrint('🔔 Notification permission: $granted');
-    return granted;
   }
 
   Future<void> syncFromProviders({
     required SettingsService settingsService,
-    required PrayerTimeService? prayerTimeService,
+    required PrayerTimeService prayerTimeService,
   }) async {
     await init();
 
@@ -104,7 +74,7 @@ class AlarmService extends ChangeNotifier {
       return;
     }
 
-    if (prayerTimeService == null || prayerTimeService.isLoading) return;
+    if (prayerTimeService.isLoading) return;
 
     final next = prayerTimeService.lastThirdTime;
 
@@ -118,7 +88,6 @@ class AlarmService extends ChangeNotifier {
       at: next,
       ringtoneKey: settings.ringtone,
       isEnglish: settings.language == 'en',
-      settingsService: settingsService,
     );
   }
 
@@ -126,19 +95,9 @@ class AlarmService extends ChangeNotifier {
     required DateTime at,
     required String ringtoneKey,
     required bool isEnglish,
-    required SettingsService settingsService,
     bool isTest = false,
   }) async {
     await init();
-
-    // Check if today is an active day
-    final today = DateTime.now().weekday;
-    final activeDays = settingsService.settings.activeDays;
-
-    if (!isTest && !activeDays.contains(today)) {
-      debugPrint('⏭️ Alarm not scheduled: day $today not in $activeDays');
-      return;
-    }
 
     // If the time is in the past (already happened recently), schedule for tomorrow exactly by adding 1 day locally
     final now = DateTime.now();
@@ -219,47 +178,47 @@ class AlarmService extends ChangeNotifier {
   Future<void> showTestNotification({
     required String ringtoneKey,
     required bool isEnglish,
-    required SettingsService settingsService,
   }) async {
     await init();
 
-    // Request permission if needed
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await androidImpl?.requestNotificationsPermission();
+    final notificationsGranted =
+        await androidImpl?.requestNotificationsPermission();
+    await androidImpl?.requestExactAlarmsPermission();
+
+    if (notificationsGranted == false) {
+      throw Exception('Notification permission denied');
+    }
 
     debugPrint('🔔 Showing test notification now...');
 
-    final String currentChannelId = 'test_channel_${ringtoneKey}_v4';
+    // Keep test channel simple to avoid device-specific issues with custom
+    // alarm channels while debugging notification delivery.
+    const String currentChannelId = 'test_channel_basic_v1';
 
     await androidImpl?.createNotificationChannel(
-      AndroidNotificationChannel(
+      const AndroidNotificationChannel(
         currentChannelId,
         'Alertes de test',
         description: 'Canal pour les tests de notification',
         importance: Importance.max,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound(ringtoneKey),
         enableVibration: true,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
       ),
     );
 
-    final androidDetails = AndroidNotificationDetails(
+    const androidDetails = AndroidNotificationDetails(
       currentChannelId,
       'Alertes de test',
       channelDescription: 'Canal pour les tests de notification',
       importance: Importance.max,
       priority: Priority.high,
-      fullScreenIntent: true,
       playSound: true,
       enableVibration: true,
-      sound: RawResourceAndroidNotificationSound(ringtoneKey),
-      audioAttributesUsage: AudioAttributesUsage.alarm,
-      category: AndroidNotificationCategory.alarm,
     );
 
-    final details = NotificationDetails(android: androidDetails);
+    const details = NotificationDetails(android: androidDetails);
 
     final title = 'Test Khayr 🌙';
     final body = isEnglish
@@ -268,6 +227,28 @@ class AlarmService extends ChangeNotifier {
 
     await _plugin.show(999, title, body, details, payload: 'test');
     debugPrint('✅ Test notification shown');
+  }
+
+  Future<bool?> requestPermission() async {
+    await init();
+    return _requestAllRelevantPermissions();
+  }
+
+  Future<void> _requestStartupPermissions() async {
+    if (_startupPermissionsRequested) return;
+    _startupPermissionsRequested = true;
+    await _requestAllRelevantPermissions();
+  }
+
+  Future<bool?> _requestAllRelevantPermissions() async {
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    final notificationsGranted =
+        await androidImpl?.requestNotificationsPermission();
+    await androidImpl?.requestExactAlarmsPermission();
+
+    return notificationsGranted;
   }
 
   Future<void> cancelAlarm() async {

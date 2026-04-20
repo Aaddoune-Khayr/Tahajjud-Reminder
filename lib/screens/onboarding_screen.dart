@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:khayr__tahajjud_reminder/services/alarm_service.dart';
 import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
 import 'package:khayr__tahajjud_reminder/theme.dart';
 
@@ -23,6 +24,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _finish() async {
     final settingsService = context.read<SettingsService>();
+    final alarmService = context.read<AlarmService>();
+
+    // Demander manuellement les permissions de notification et alarme exacte
+    await alarmService.requestPermission();
+
     await settingsService.completeOnboarding();
     if (mounted) {
       context.pop();
@@ -82,12 +88,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ? 'Browse authentic night Du\'aa in a clean, collapsible list and let the Adhan wake you gently for Tahajjud.'
                           : 'Parcourez des Du\'aa authentiques de la nuit dans une liste pliable et laissez l\'Adhan vous réveiller en douceur pour Tahajjud.',
                     ),
+                    _OnboardingPage(
+                      icon: Icons.notifications_active,
+                      title: isEnglish
+                          ? 'Permissions Needed'
+                          : 'Autorisations Requises',
+                      description: isEnglish
+                          ? 'To wake you up exactly on time, Khayr needs permission to send notifications and set exact alarms.\n\nPlease allow them on the next pop-ups.'
+                          : 'Pour vous réveiller à l\'heure exacte pour Tahajjud, Khayr a besoin des autorisations de notifications et d\'alarmes exactes.\n\nMerci de les accepter dans les fenêtres suivantes.',
+                    ),
                   ],
                 ),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
+                children: List.generate(4, (index) {
                   final isActive = index == _currentPage;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
@@ -108,7 +123,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    if (_currentPage == 2) {
+                    if (_currentPage == 3) {
                       _finish();
                     } else {
                       _controller.nextPage(
@@ -124,7 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   ),
                   child: Text(
-                    _currentPage == 2
+                    _currentPage == 3
                         ? (isEnglish ? 'Let\'s start' : 'Commencer')
                         : (isEnglish ? 'Next' : 'Suivant'),
                   ),

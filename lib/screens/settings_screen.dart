@@ -14,7 +14,6 @@ class SettingsScreen extends StatelessWidget {
     final settings = settingsService.settings;
     final isEnglish = settings.language == 'en';
     final primary = Theme.of(context).colorScheme.primary;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
       body: SafeArea(
@@ -312,19 +311,31 @@ class _AlarmActionsTile extends StatelessWidget {
     }
 
     Future<void> test() async {
-      final settingsService = context.read<SettingsService>();
-      await alarmService.showTestNotification(
-        ringtoneKey: settings.ringtone,
-        isEnglish: isEnglish,
-        settingsService: settingsService,
-      );
+      try {
+        await alarmService.showTestNotification(
+          ringtoneKey: settings.ringtone,
+          isEnglish: isEnglish,
+        );
+      } catch (_) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isEnglish
+                  ? 'Notification blocked. Tap Authorize and enable app notifications in Android settings.'
+                  : 'Notification bloquée. Appuyez sur Autoriser puis activez les notifications dans Android.',
+            ),
+          ),
+        );
+        return;
+      }
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             isEnglish
-                ? 'Test notification scheduled (3s).'
-                : 'Notification test programmée (3s).',
+                ? 'Test notification sent.'
+                : 'Notification test envoyée.',
           ),
         ),
       );
@@ -363,7 +374,7 @@ class _AlarmActionsTile extends StatelessWidget {
                       child: Text(authorizeLabel),
                     ),
                     ElevatedButton(
-                      onPressed: settings.alarmEnabled ? test : null,
+                      onPressed: test,
                       style: ElevatedButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         backgroundColor: primary.withValues(alpha: 0.1),
