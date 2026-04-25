@@ -276,7 +276,7 @@ class _AdhanSelectorTileState extends State<_AdhanSelectorTile> {
   }
 }
 
-class _AlarmActionsTile extends StatelessWidget {
+class _AlarmActionsTile extends StatefulWidget {
   final String authorizeLabel;
   final String testLabel;
 
@@ -284,6 +284,13 @@ class _AlarmActionsTile extends StatelessWidget {
     required this.authorizeLabel,
     required this.testLabel,
   });
+
+  @override
+  State<_AlarmActionsTile> createState() => _AlarmActionsTileState();
+}
+
+class _AlarmActionsTileState extends State<_AlarmActionsTile> {
+  bool _isTesting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -294,14 +301,22 @@ class _AlarmActionsTile extends StatelessWidget {
 
     Future<void> authorize() async {
       final granted = await alarmService.requestPermission();
+      final diag = await alarmService.getPermissionDiagnostics();
       if (!context.mounted) return;
-      
+
       String message;
-      if (granted == true) {
-        message = isEnglish ? 'Notifications authorized.' : 'Notifications autorisées.';
+      if (granted == true || diag['notificationsEnabled'] == true) {
+        final exactOk = diag['exactAlarmsEnabled'] == true;
+        message = exactOk
+            ? (isEnglish
+                ? 'Notifications + exact alarms authorized.'
+                : 'Notifications + alarmes exactes autorisées.')
+            : (isEnglish
+                ? 'Notifications authorized. Enable exact alarms in Android settings.'
+                : 'Notifications autorisées. Activez aussi les alarmes exactes dans Android.');
       } else {
-        message = isEnglish 
-            ? 'Please also enable "Exact Alarms" in settings.' 
+        message = isEnglish
+            ? 'Please also enable "Exact Alarms" in settings.'
             : 'Veuillez aussi activer "Alarmes et rappels" dans les réglages.';
       }
 
@@ -310,35 +325,47 @@ class _AlarmActionsTile extends StatelessWidget {
       );
     }
 
-    Future<void> test() async {
-      try {
-        await alarmService.showTestNotification(
-          ringtoneKey: settings.ringtone,
-          isEnglish: isEnglish,
-        );
-      } catch (_) {
-        if (!context.mounted) return;
+    Future<void> startTest() async {
+      final result = await alarmService.showTestNotification(
+        ringtoneKey: settings.ringtone,
+        isEnglish: isEnglish,
+      );
+      if (!context.mounted) return;
+
+      if (result == 'sent_custom') {
+        setState(() => _isTesting = true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              isEnglish
-                  ? 'Notification blocked. Tap Authorize and enable app notifications in Android settings.'
-                  : 'Notification bloquée. Appuyez sur Autoriser puis activez les notifications dans Android.',
-            ),
+            content: Text(isEnglish
+                ? 'Test started — press Stop to silence.'
+                : 'Test démarré — appuyez sur Arrêter pour couper.'),
           ),
         );
-        return;
-      }
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isEnglish
-                ? 'Test notification sent.'
-                : 'Notification test envoyée.',
+      } else if (result == 'permission_denied') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isEnglish
+                ? 'Notification blocked by Android permission/settings.'
+                : 'Notification bloquée par les permissions/réglages Android.'),
           ),
-        ),
-      );
+        );
+      } else {
+        final errorSuffix = result.startsWith('send_failed:')
+            ? result.substring('send_failed:'.length)
+            : '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isEnglish
+                ? 'Notification send failed. $errorSuffix'
+                : 'Échec d\'envoi de notification. $errorSuffix'),
+          ),
+        );
+      }
+    }
+
+    Future<void> stopTest() async {
+      await alarmService.stopTestAlarm();
+      if (mounted) setState(() => _isTesting = false);
     }
 
     return Padding(
@@ -360,7 +387,7 @@ class _AlarmActionsTile extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const SizedBox(width: 40), // indent icons
+              const SizedBox(width: 40),
               Expanded(
                 child: Wrap(
                   spacing: 8,
@@ -371,18 +398,31 @@ class _AlarmActionsTile extends StatelessWidget {
                       style: OutlinedButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                       ),
-                      child: Text(authorizeLabel),
+                      child: Text(widget.authorizeLabel),
                     ),
-                    ElevatedButton(
-                      onPressed: test,
-                      style: ElevatedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor: primary.withValues(alpha: 0.1),
-                        foregroundColor: primary,
-                        elevation: 0,
+                    if (!_isTesting)
+                      ElevatedButton(
+                        onPressed: startTest,
+                        style: ElevatedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: primary.withValues(alpha: 0.1),
+                          foregroundColor: primary,
+                          elevation: 0,
+                        ),
+                        child: Text(widget.testLabel),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: stopTest,
+                        icon: const Icon(Icons.stop, size: 18),
+                        label: Text(isEnglish ? 'Stop' : 'Arrêter'),
+                        style: ElevatedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          backgroundColor: Colors.red.withValues(alpha: 0.15),
+                          foregroundColor: Colors.red,
+                          elevation: 0,
+                        ),
                       ),
-                      child: Text(testLabel),
-                    ),
                   ],
                 ),
               ),
@@ -393,6 +433,7 @@ class _AlarmActionsTile extends StatelessWidget {
     );
   }
 }
+
 
 class _SettingsCard extends StatelessWidget {
   final String title;

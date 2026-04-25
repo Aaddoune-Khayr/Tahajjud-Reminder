@@ -42,3 +42,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 flutter/
+
+# Copied into APK from Assets/audio/ by Gradle (see android/app/build.gradle)
+/android/app/src/main/res/raw/*.mp3

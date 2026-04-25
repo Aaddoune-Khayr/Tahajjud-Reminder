@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:khayr__tahajjud_reminder/services/prayer_time_service.dart';
 import 'package:khayr__tahajjud_reminder/services/settings_service.dart';
+import 'package:khayr__tahajjud_reminder/services/alarm_service.dart';
 import 'package:khayr__tahajjud_reminder/theme.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -153,6 +154,21 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          if (context.watch<AlarmService>().isRinging) ...[
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () {
+                context.read<AlarmService>().stopTestAlarm();
+              },
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: Text(isEnglish ? 'Stop Adhan' : 'Arrêter l\'Adhan'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              ),
+            ),
+          ],
           const SizedBox(height: 32),
           Container(
             padding: AppSpacing.paddingLg,

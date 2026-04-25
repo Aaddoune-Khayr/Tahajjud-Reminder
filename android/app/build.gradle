@@ -58,6 +58,38 @@ flutter {
     source = "../.."
 }
 
+// Copy Adhan MP3 into res/raw so notification sounds resolve (invalid_sound fix).
+// Sources: project root Assets/audio/ or assets/audio/ (Flutter convention).
+def flutterProjectRoot = rootProject.projectDir.parentFile
+tasks.register("copyAdhanToRawResources") {
+    doLast {
+        def rawDir = file("${projectDir}/src/main/res/raw")
+        rawDir.mkdirs()
+        def dirs = [
+            new File(flutterProjectRoot, "Assets/audio"),
+            new File(flutterProjectRoot, "assets/audio"),
+        ]
+        dirs.each { dir ->
+            if (dir.exists()) {
+                copy {
+                    from(dir)
+                    into(rawDir)
+                    include "adhan_1.mp3", "adhan_2.mp3"
+                }
+            }
+        }
+        if (!file("${rawDir}/adhan_1.mp3").exists()) {
+            logger.lifecycle("Khayr: WARNING — adhan_1.mp3 not in res/raw. Add MP3 to Assets/audio/ or android/app/src/main/res/raw/")
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.configureEach {
+        it.dependsOn("copyAdhanToRawResources")
+    }
+}
+
 dependencies {
     // Desugaring support for Java 8+ APIs (required by flutter_local_notifications)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
